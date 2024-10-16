@@ -2,28 +2,28 @@
 #![no_main]
 #![deny(unused_must_use)]
 
-
 use core::fmt::Write;
 use core::panic::PanicInfo;
 
-use dht_sensor::InputOutputPin;
 use embassy_futures::yield_now;
-use embassy_rp::i2c::{Config, I2c};
-use embedded_hal::digital::OutputPin;
-use rand_core::RngCore;
-use embassy_rp::clocks::RoscRng;
-use embassy_rp::gpio::{Input, OutputOpenDrain};
-use embassy_rp::gpio::{Level, Output, Pull};
+use embassy_rp::gpio::Output;
+use embassy_rp::gpio::Level;
+use embassy_rp::pio::ShiftDirection;
+use embassy_rp::Peripheral;
+use embassy_time::Timer;
+use embassy_rp::pio::{self, Pio};
+use embassy_rp::i2c::{self, I2c};
 use embassy_executor::Spawner;
-use embassy_rp::{bind_interrupts, Peripherals};
-use embassy_rp::peripherals::USB;
-use embassy_rp::peripherals::I2C0;
-use embassy_rp::i2c::InterruptHandler as I2CInterruptHandler;
-use embassy_rp::usb::{Driver, InterruptHandler as UsbInterruptHandler};
-use embassy_time::{Delay, Instant, Timer};
-use embassy_futures::select::{self, Either};
 
-use log::info;
+use embassy_rp::PeripheralRef;
+use embassy_rp::{bind_interrupts, Peripherals};
+use embassy_rp::peripherals::I2C0;
+use embassy_rp::peripherals::PIO0;
+use embassy_rp::pio::InterruptHandler as PIOInterruptHandler;
+use embassy_rp::i2c::InterruptHandler as I2CInterruptHandler;
+
+use fixed::traits::ToFixed;
+use fixed_macro::types::U56F8;
 
 use defmt as _;
 use defmt_rtt as _;
@@ -32,12 +32,10 @@ use defmt_rtt as _;
 use ssd1306::{prelude::*, Ssd1306};
 use ssd1306::I2CDisplayInterface;
 
-use dht11::{Dht11, Measurement};
-
 // Bind interrupts to their handlers.
 bind_interrupts!(struct Irqs {
-    USBCTRL_IRQ => UsbInterruptHandler<USB>;
     I2C0_IRQ => I2CInterruptHandler<I2C0>;
+    PIO0_IRQ_0 => PIOInterruptHandler<PIO0>;
 });
 
 #[panic_handler]
@@ -49,7 +47,7 @@ fn panic_handler(panic_info: &PanicInfo) -> ! {
         p.I2C0,
         p.PIN_1,
         p.PIN_0, 
-        Config::default()
+        i2c::Config::default()
     );
     let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(
@@ -63,52 +61,64 @@ fn panic_handler(panic_info: &PanicInfo) -> ! {
     let _ = writeln!(display, "{}", panic_info.message());
 
     if let Some(location) = panic_info.location() {
-        let _ = writeln!(display, "file: {}", location.file());
-        let _ = writeln!(display, "line: {}", location.line());
+        // let _ = writeln!(display, "file: {}", location.file());
+        // let _ = writeln!(display, "line: {}", location.line());
     }
 
     loop {}
 }
 
-// Async task for USB logging.
-#[embassy_executor::task]
-async fn logger_task(driver: Driver<'static, USB>) {
-    embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
-}
+async fn w2812_driver() {
+    let prg = pio_proc::pio_asm!(
+        ".side_set 1",
+        ".wrap_target",
+        "bitloop:",
+            "out x, 1 side 0 [3]", // set low 4 cycles (0.500us)
+            "jmp !x, do_zero side 1 [1]", // set high 2 cycle (0.250us)
+            "jmp bitloop side 1 [4]", // set high 5 cycles (0.625us)
+        "do_zero:",
+            "nop side 0 [2]" // set low 3 cycles (0.375us)
+        // "out x, 1", // wait for data and read a bit into x (pin 1 should be set low)
+        // "set pins, 1 [1]", // set pin high (0.4us)
+        // "mov pins, x [1]", // set pin to x (0.4us)
+        // "set pins, 0", // set pin low (0.2us + 0.2us during `out x, 1`)
+        ".wrap"
+    );
+    let mut cfg = pio::Config::default();
 
-#[embassy_executor::task]
-async fn cycle(mut pin: Output<'static>) {
-    loop {
-        pin.set_high();
-        Timer::after_secs(1).await;
-        pin.set_low();
-        Timer::after_secs(1).await;
-    }
-}
+    let mut raw_pin = p.PIN_28.into_ref();
+    Output::new(raw_pin.reborrow(), Level::Low); // set the pin low
+    let out_pin = common.make_pio_pin(raw_pin);
 
-#[embassy_executor::task]
-async fn panic_soon() {
-    Timer::after_secs(10).await;
-    panic!();
+    
+    let program = common.load_program(&prg.program);
+    cfg.use_program(&program, &[&out_pin]);
+
+    // cfg.set_out_pins(&[&out_pin]);
+    // cfg.set_set_pins(&[&out_pin]);
+    cfg.clock_divider = (U56F8!(125_000_000) / 8_000_000).to_fixed();
+
+    cfg.shift_out.auto_fill = true;
+    cfg.shift_out.threshold = 08;
+    cfg.shift_out.direction = ShiftDirection::Right;
+
+    sm0.set_pin_dirs(pio::Direction::Out, &[&out_pin]);
+    sm0.set_config(&cfg);
+    sm0.set_enable(true);
 }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // Initialize peripherals and USB driver.
-    let rp_peripherals = embassy_rp::init(Default::default());
-    let usb_driver = Driver::new(rp_peripherals.USB, Irqs);
+    let p = embassy_rp::init(Default::default());
 
-    // Spawn the logger task
-    // spawner.spawn(logger_task(usb_driver)).unwrap();
-    spawner.spawn(cycle(Output::new(rp_peripherals.PIN_16, Level::High))).unwrap();
-    // spawner.spawn(panic_soon()).unwrap();
-
+    // initialize the OLED (SSD1306)
     let i2c = I2c::new_async(
-        rp_peripherals.I2C0,
-        rp_peripherals.PIN_1,
-        rp_peripherals.PIN_0, 
+        p.I2C0,
+        p.PIN_1,
+        p.PIN_0, 
         Irqs,
-        Config::default()
+        i2c::Config::default()
     );
     let interface = I2CDisplayInterface::new(i2c);
     let mut display = Ssd1306::new(
@@ -119,64 +129,32 @@ async fn main(spawner: Spawner) {
     display.init().unwrap();
     display.clear().unwrap();
 
-    let mut dht11 = Dht11::new(OutputOpenDrain::new(rp_peripherals.PIN_2, Level::Low));
+    // initialize the w2812 LEDs
+    let Pio {
+        mut common,
+        mut sm0,
+        ..
+    } = Pio::new(p.PIO0, Irqs); 
+
+    let mut dma = PeripheralRef::new(p.DMA_CH0);
     loop {
-        let result = dht11.perform_measurement(&mut Delay);
-        display.set_position(0, 0).unwrap();
+        let _ = display.clear();
+        let _ = writeln!(display, "sending white");
+        sm0.tx().wait_push(0).await;
+        sm0.tx().wait_push(0).await;
+        sm0.tx().wait_push(0).await;
+        Timer::after_secs(1).await;
 
-        match result {
-            Ok(r) => {
-                let temp = (f32::from(r.temperature) / 10. * 1.8) + 32.;
-                let humidity = f32::from(r.humidity) / 10.;
-                let _ = writeln!(display, "temp: {:.1}°F", temp);
-                let _ = writeln!(display, "humidity: {:.1}%", humidity);
-            }
-            Err(e) => {
-                let _ = writeln!(display, "{:?}", e);
-            }
-        }
-
-        let x = 69;
-        let ptr = (&x as *const i32) as usize;
-        let _ = writeln!(display, "mem: {:?}", ptr.wrapping_sub(0x20000000));
-
-        yield_now().await;
+        let _ = display.clear();
+        let _ = writeln!(display, "sending purple");
+        // ???, blue, red, green
+        // sm0.tx().wait_push(0xff_00_00_00).await;
+        // sm0.tx().wait_push(0xff_00_00_00).await;
+        sm0.tx().wait_push(u32::MAX).await;
+        sm0.tx().wait_push(u32::MAX).await;
+        sm0.tx().wait_push(u32::MAX).await;
+        // sm0.tx().wait_push(0x00_00_00_ff).await;
+        // sm0.tx().wait_push(0x00_ff_ff_00).await;
+        Timer::after_secs(1).await;
     }
-
-    // for i in 0..100 {
-    //     let _ = writeln!(display, "{}", i);
-    //     Timer::after_secs(1).await;
-    // }
-
-    // let mut rng = fastrand::Rng::with_seed(RoscRng.next_u64());
-    // let mut led = Output::new(rp_peripherals.PIN_16, Level::Low);
-    // let mut button = Input::new(rp_peripherals.PIN_15, Pull::Down);
-    //
-    // loop {
-    //     info!("GAME START");
-    //
-    //     Timer::after_millis(200).await;
-    //
-    //     let either = select::select(
-    //         Timer::after_millis(rng.u64(300..3300)), 
-    //         button.wait_for_rising_edge()
-    //     ).await;
-    //
-    //     if let Either::Second(_) = either {
-    //         info!("FAIL");
-    //         Timer::after_millis(500).await;
-    //         button.wait_for_rising_edge().await;
-    //         continue;
-    //     }
-    //
-    //     info!("PRESS!!!");
-    //     led.set_high();
-    //     let now = Instant::now();
-    //     button.wait_for_rising_edge().await;
-    //     led.set_low();
-    //     info!("duration: {}", now.elapsed().as_millis());
-    //
-    //     Timer::after_millis(500).await;
-    //     button.wait_for_rising_edge().await;
-    // }
 }
