@@ -2,3 +2,4 @@
 
 pub mod panic;
 pub mod led;
+pub mod blue;

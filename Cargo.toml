@@ -33,9 +33,10 @@ embassy-futures = "0.1.1"
 embassy-rp = { version = "0.2.0", features = ["time-driver", "critical-section-impl", "rp2040"] }
 embassy-time = "0.3.2"
 embassy-sync = "0.6.0"
+embassy-usb-logger = "0.2.0"
 
 [patch.crates-io]
-trouble-host = { git = "https://github.com/embassy-rs/trouble.git", rev = "4b8c0f499b34e46ca23a56e2d1640ede371722cf" }
+trouble-host = { git = "https://github.com/embassy-rs/trouble.git", rev = "865d4ef5562510a593f868aea59a5b0d572589b0" }
 cyw43 = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 cyw43-pio = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
@@ -43,3 +44,4 @@ embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b
 embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
+embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
