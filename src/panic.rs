@@ -32,8 +32,8 @@ pub fn panic_handler(panic_info: &PanicInfo) -> ! {
     let _ = writeln!(display, "{}", panic_info.message());
 
     if let Some(location) = panic_info.location() {
-        // let _ = writeln!(display, "file: {}", location.file());
-        // let _ = writeln!(display, "line: {}", location.line());
+        let _ = writeln!(display, "file: {}", location.file());
+        let _ = writeln!(display, "line: {}", location.line());
     }
 
     loop {}
