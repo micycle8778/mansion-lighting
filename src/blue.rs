@@ -76,8 +76,10 @@ where
     .await;
 }
 
-async fn ble_task<C: Controller>(mut runner: Runner<'_, C>) -> Result<(), BleHostError<C::Error>> {
-    runner.run().await
+async fn ble_task<C: Controller>(mut runner: Runner<'_, C>) {
+    if let Err(e) = runner.run().await {
+        error!("ble_task ERROR: {e:?}");
+    }
 }
 
 async fn gatt_task<C: Controller>(server: &Server<'_, '_, C>) {
