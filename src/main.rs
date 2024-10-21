@@ -4,6 +4,7 @@
 
 use core::fmt::Write;
 
+use embassy_rp::gpio::Input;
 use log::info;
 
 use embassy_rp::peripherals::USB;
@@ -96,27 +97,20 @@ async fn main(spawner: Spawner) {
         LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28)
     };
 
-    // initialize the bluetooth chip
-    // first, lets get the firmware in here. we need this firmware to use
-    // the onboard bluetooth chip
-    let fw = include_bytes!("../firmware/43439A0.bin");
-    let clm = include_bytes!("../firmware/43439A0_clm.bin");
-    let btfw = include_bytes!("../firmware/43439A0_btfw.bin");
+    let mut big_red = Input::new(p.PIN_2, embassy_rp::gpio::Pull::Up);
+    let mut count = 0;
 
-    // setup pins for talking to the SPI bus of the bluetooth chip
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let spi = PioSpi::new(&mut pio.common, pio.sm1, pio.irq0, cs, p.PIN_24, p.PIN_29, p.DMA_CH0);
+    loop {
+        display.clear().unwrap();
+        let _ = write!(display, "count: {count}");
 
-    // spin up the driver
-    static STATE: StaticCell<cyw43::State> = StaticCell::new();
-    let state = STATE.init(cyw43::State::new());
-    let (_net_device, bt_device, mut control, runner) = cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
-    spawner.spawn(cyw43_task(runner)).unwrap();
-    control.init(clm).await;
+        for _ in 0..count {
+            leds.send_color(Color::PURPLE).await;
+        }
 
-    let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
+        big_red.wait_for_falling_edge().await;
+        Timer::after_millis(100).await;
 
-    blue::run(controller).await;
-    panic!("end of program.");
+        count += 1;
+    }
 }
