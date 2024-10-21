@@ -1,3 +1,4 @@
+use embassy_futures::yield_now;
 use log::error;
 use log::info;
 
@@ -35,7 +36,7 @@ struct BatteryService {
 
 #[gatt_service(uuid = "6D69636861656C73206D616E73696F6E")]
 struct MyService {
-    #[characteristic(uuid = "6D69636861656C73206D616E73696F6E", read, write_without_response)]
+    #[characteristic(uuid = "6D69636861656C73206D616E73696F6E", read, write)]
     byte: u8,
 }
 
@@ -54,7 +55,7 @@ where
     let mut table: AttributeTable<'_, NoopRawMutex, MAX_ATTRIBUTES> = AttributeTable::new();
 
     // Generic Access Service (mandatory)
-    let id = b"Pico W Bluetooth";
+    let id = b"mansion lighting";
     let appearance = [0x80, 0x07];
     let mut svc = table.add_service(Service::new(0x1800));
     let _ = svc.add_characteristic_ro(0x2a00, id);
@@ -122,13 +123,13 @@ async fn advertise_task<C: Controller>(
         &[
             AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
             AdStructure::ServiceUuids16(&[Uuid::Uuid16([0x0f, 0x18])]),
-            AdStructure::CompleteLocalName(b"Trouble"),
+            AdStructure::CompleteLocalName(b"mansion lighting"),
         ],
         &mut adv_data[..],
     )?;
     loop {
         info!("[adv] advertising");
-        let mut advertiser = peripheral
+        let mut advertiser = match peripheral
             .advertise(
                 &Default::default(),
                 Advertisement::ConnectableScannableUndirected {
@@ -136,7 +137,14 @@ async fn advertise_task<C: Controller>(
                     scan_data: &[],
                 },
             )
-            .await?;
+            .await {
+                Ok(x) => x,
+                Err(e) => {
+                    error!("ADVERTISING ERROR: {:?}", e);
+                    return Err(e);
+                }
+        };
+        info!("[adv] advertising2");
         let conn = advertiser.accept().await?;
         info!("[adv] connection established");
         // Keep connection alive

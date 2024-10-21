@@ -49,7 +49,7 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::task]
 async fn logger_task(driver: Driver<'static, USB>) {
-    embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
+    embassy_usb_logger::run!(1024, log::LevelFilter::Trace, driver);
 }
 
 #[embassy_executor::task]
@@ -86,6 +86,7 @@ async fn main(spawner: Spawner) {
     ).into_terminal_mode();
     display.init().unwrap();
     display.clear().unwrap();
+    let _ = write!(display, "Hello, world!");
 
     // setup PIO
     let mut pio = Pio::new(p.PIO0, Irqs); 

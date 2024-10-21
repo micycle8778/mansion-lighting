@@ -1615,7 +1615,7 @@ dependencies = [
 [[package]]
 name = "trouble-host"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/trouble.git?rev=865d4ef5562510a593f868aea59a5b0d572589b0#865d4ef5562510a593f868aea59a5b0d572589b0"
+source = "git+https://github.com/micycle8778/trouble?rev=865d4ef5562510a593f868aea59a5b0d572589b0#865d4ef5562510a593f868aea59a5b0d572589b0"
 dependencies = [
  "bt-hci",
  "embassy-futures",
@@ -1625,13 +1625,14 @@ dependencies = [
  "embedded-io-async",
  "futures",
  "heapless",
+ "log",
  "trouble-host-macros",
 ]
 
 [[package]]
 name = "trouble-host-macros"
 version = "0.1.0"
-source = "git+https://github.com/embassy-rs/trouble.git?rev=865d4ef5562510a593f868aea59a5b0d572589b0#865d4ef5562510a593f868aea59a5b0d572589b0"
+source = "git+https://github.com/micycle8778/trouble?rev=865d4ef5562510a593f868aea59a5b0d572589b0#865d4ef5562510a593f868aea59a5b0d572589b0"
 dependencies = [
  "Inflector",
  "darling",
