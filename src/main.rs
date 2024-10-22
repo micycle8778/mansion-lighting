@@ -3,7 +3,6 @@
 #![deny(unused_must_use)]
 
 use core::fmt::Write;
-use core::mem::MaybeUninit;
 
 use embassy_executor::Executor;
 use embassy_futures::join::join;
@@ -11,50 +10,45 @@ use embassy_futures::select::select;
 use embassy_rp::multicore::Stack;
 
 use emb_test::lighting::Message;
-use embassy_rp::pio::Instance;
 use embassy_rp::Peripheral;
 use embassy_rp::PeripheralRef;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::blocking_mutex::NoopMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::channel::Receiver;
 use log::info;
 
+use bt_hci::controller::ExternalController;
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::Driver;
 use embassy_time::Timer;
-use bt_hci::controller::ExternalController;
 use static_cell::ConstStaticCell;
 use static_cell::StaticCell;
 
 use cyw43_pio::PioSpi;
 
 use embassy_executor::Spawner;
-use embassy_rp::gpio::Output;
 use embassy_rp::gpio::Level;
+use embassy_rp::gpio::Output;
 use embassy_rp::i2c::{self, I2c};
 use embassy_rp::pio::Pio;
 
 use embassy_rp::bind_interrupts;
-use embassy_rp::peripherals::DMA_CH0;
+use embassy_rp::i2c::InterruptHandler as I2CInterruptHandler;
 use embassy_rp::peripherals::I2C0;
 use embassy_rp::peripherals::PIO0;
 use embassy_rp::peripherals::PIO1;
 use embassy_rp::pio::InterruptHandler as PIOInterruptHandler;
-use embassy_rp::i2c::InterruptHandler as I2CInterruptHandler;
 use embassy_rp::usb::InterruptHandler as USBInterruptHandler;
 
 use defmt as _;
 use defmt_rtt as _;
 
-use ssd1306::{prelude::*, Ssd1306};
 use ssd1306::I2CDisplayInterface;
+use ssd1306::{prelude::*, Ssd1306};
 
-use emb_test::lighting;
-use emb_test::led::LedDriver;
 use emb_test::blue;
+use emb_test::led::LedDriver;
+use emb_test::lighting;
 
 // Bind interrupts to their handlers.
 bind_interrupts!(struct Irqs {
@@ -74,8 +68,8 @@ async fn logger_task(driver: Driver<'static, USB>) {
 
 #[embassy_executor::task]
 async fn lighting_task(
-    led_driver: LedDriver<'static, PIO1, 0>, 
-    recv: Receiver<'static, CriticalSectionRawMutex, Message, 1>
+    led_driver: LedDriver<'static, PIO1, 0>,
+    recv: Receiver<'static, CriticalSectionRawMutex, Message, 1>,
 ) -> ! {
     lighting::run(led_driver, recv).await;
 }
@@ -94,19 +88,10 @@ async fn main(spawner: Spawner) {
     info!("Hello, world!");
 
     // initialize the OLED (SSD1306)
-    let i2c = I2c::new_async(
-        p.I2C0,
-        p.PIN_1,
-        p.PIN_0, 
-        Irqs,
-        i2c::Config::default()
-    );
+    let i2c = I2c::new_async(p.I2C0, p.PIN_1, p.PIN_0, Irqs, i2c::Config::default());
     let interface = I2CDisplayInterface::new(i2c);
-    let mut display = Ssd1306::new(
-        interface,
-        DisplaySize128x64,
-        DisplayRotation::Rotate0,
-    ).into_terminal_mode();
+    let mut display =
+        Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_terminal_mode();
     display.init().unwrap();
     display.clear().unwrap();
     let _ = write!(display, "Hello, world!");
@@ -114,12 +99,11 @@ async fn main(spawner: Spawner) {
     let mut pio = Pio::new(p.PIO1, Irqs);
 
     // initialize the w2812 LEDs
-    let leds = {
-        LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28)
-    };
+    let leds = { LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28) };
 
     let lighting_channel = {
-        static LIGHTING_CHANNEL: ConstStaticCell<Channel<CriticalSectionRawMutex, Message, 1>> = ConstStaticCell::new(Channel::new());
+        static LIGHTING_CHANNEL: ConstStaticCell<Channel<CriticalSectionRawMutex, Message, 1>> =
+            ConstStaticCell::new(Channel::new());
         LIGHTING_CHANNEL.take()
     };
 
@@ -160,23 +144,25 @@ async fn main(spawner: Spawner) {
         let pwr = Output::new(pwr_pin.reborrow(), Level::Low);
         let cs = Output::new(cs_pin.reborrow(), Level::High);
         let spi = PioSpi::new(
-            &mut pio.common, 
-            pio.sm1, 
-            pio.irq0, 
-            cs, 
-            dio_pin, 
-            clk_pin, 
-            dma.reborrow()
+            &mut pio.common,
+            pio.sm1,
+            pio.irq0,
+            cs,
+            dio_pin,
+            clk_pin,
+            dma.reborrow(),
         );
 
         // spin up the driver
         *cyw43_state = cyw43::State::new();
-        let (_net_device, bt_device, mut control, runner) = cyw43::new_with_bluetooth(cyw43_state, pwr, spi, fw, btfw).await;
+        let (_net_device, bt_device, mut control, runner) =
+            cyw43::new_with_bluetooth(cyw43_state, pwr, spi, fw, btfw).await;
         let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
 
         select(
             join(control.init(clm), runner.run()), // run the cyw43 driver
-            blue::run(controller, lighting_channel.sender()) // run the ble driver
-        ).await;
+            blue::run(controller, lighting_channel.sender()), // run the ble driver
+        )
+        .await;
     }
 }

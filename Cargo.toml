@@ -45,3 +45,18 @@ embassy-rp = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625ee
 embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
+
+[[bin]]
+name = "emb_test"
+path = "src/main.rs"
+test = false
+doctest = false
+bench = false
+
+[lib]
+name = "emb_test"
+path = "src/lib.rs"
+test = false
+doctest = false
+bench = false
+

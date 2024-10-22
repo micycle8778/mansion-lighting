@@ -3,7 +3,7 @@
 mod color;
 pub use color::Color;
 
-pub mod panic;
-pub mod led;
 pub mod blue;
+pub mod led;
 pub mod lighting;
+pub mod panic;

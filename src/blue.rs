@@ -6,11 +6,10 @@ use log::info;
 
 use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_time::{Duration, Timer};
 use trouble_host::prelude::*;
 
-use crate::Color;
 use crate::lighting::Message;
+use crate::Color;
 
 /// Size of L2CAP packets (ATT MTU is this - 4)
 const L2CAP_MTU: usize = 251;
@@ -27,13 +26,12 @@ type Resources<C> = HostResources<C, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX, L2CAP_
 
 // GATT Server definition
 #[gatt_server(attribute_data_size = 32)]
-struct Server {
-}
+struct Server {}
 
 struct Handles {
     base_color: Characteristic,
     brightness: Characteristic,
-    skip: Characteristic
+    skip: Characteristic,
 }
 
 const fn gen_uuid(s: &str) -> Uuid {
@@ -52,8 +50,8 @@ const fn gen_uuid(s: &str) -> Uuid {
 }
 
 pub async fn run<C: Controller, M: RawMutex, const N: usize>(
-    controller: C, 
-    sender: Sender<'_, M, Message, N>
+    controller: C,
+    sender: Sender<'_, M, Message, N>,
 ) {
     let address = Address::random([0xff, 0x9f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("Our address = {:?}", address);
@@ -91,30 +89,32 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
 
         let mut service = table.add_service(Service::new(SERVICE_UUID));
 
-        let base_color = service.add_characteristic(
-            BASE_COLOR_UUID,
-            &[CharacteristicProp::Write], 
-            &mut base_color 
-        ).build();
+        let base_color = service
+            .add_characteristic(
+                BASE_COLOR_UUID,
+                &[CharacteristicProp::Write],
+                &mut base_color,
+            )
+            .build();
 
-        let brightness = service.add_characteristic(
-            BRIGHTNESS_UUID,
-            &[CharacteristicProp::Write], 
-            &mut brightness
-        ).build();
+        let brightness = service
+            .add_characteristic(
+                BRIGHTNESS_UUID,
+                &[CharacteristicProp::Write],
+                &mut brightness,
+            )
+            .build();
 
-        let skip = service.add_characteristic(
-            SKIP_UUID,
-            &[CharacteristicProp::Write], 
-            &mut skip 
-        ).build();
+        let skip = service
+            .add_characteristic(SKIP_UUID, &[CharacteristicProp::Write], &mut skip)
+            .build();
 
         service.build();
 
         Handles {
             base_color,
             brightness,
-            skip
+            skip,
         }
     };
 
@@ -124,7 +124,7 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
     let _ = select3(
         ble_task(runner),
         gatt_task(&server, sender, handles),
-        advertise_task(peripheral, &server),
+        advertise_task(peripheral),
     )
     .await;
 }
@@ -138,34 +138,49 @@ async fn ble_task<C: Controller>(mut runner: Runner<'_, C>) {
 async fn gatt_task<C: Controller, M: RawMutex, const N: usize>(
     server: &Server<'_, '_, C>,
     sender: Sender<'_, M, Message, N>,
-    handles: Handles
+    handles: Handles,
 ) {
     loop {
         match server.next().await {
-            Ok(GattEvent::Write { handle, connection: _ }) => {
+            Ok(GattEvent::Write {
+                handle,
+                connection: _,
+            }) => {
                 info!("[gatt] pre write event on {:?}", handle);
 
                 if handle == handles.base_color {
                     info!("setting base color");
-                    server.get(handles.base_color, |value| {
-                        let color = Color::new(value[0], value[1], value[2]);
-                        sender.send(Message::SetColor(color))
-                    }).unwrap().await;
+                    server
+                        .get(handles.base_color, |value| {
+                            let color = Color::new(value[0], value[1], value[2]);
+                            sender.send(Message::SetColor(color))
+                        })
+                        .unwrap()
+                        .await;
                 } else if handle == handles.brightness {
                     info!("setting brightness");
-                    server.get(handles.brightness, |value| {
-                        sender.send(Message::SetBrightness(value[0]))
-                    }).unwrap().await;
+                    server
+                        .get(handles.brightness, |value| {
+                            sender.send(Message::SetBrightness(value[0]))
+                        })
+                        .unwrap()
+                        .await;
                 } else if handle == handles.skip {
                     info!("setting skip");
-                    server.get(handles.skip, |value| {
-                        sender.send(Message::SetSkip(value[0]))
-                    }).unwrap().await;
+                    server
+                        .get(handles.skip, |value| {
+                            sender.send(Message::SetSkip(value[0]))
+                        })
+                        .unwrap()
+                        .await;
                 } else {
                     info!("[gatt] Write event on {:?}", handle);
                 }
             }
-            Ok(GattEvent::Read { handle, connection: _ }) => {
+            Ok(GattEvent::Read {
+                handle,
+                connection: _,
+            }) => {
                 info!("[gatt] Read event on {:?}", handle);
             }
             Err(e) => {
@@ -177,7 +192,6 @@ async fn gatt_task<C: Controller, M: RawMutex, const N: usize>(
 
 async fn advertise_task<C: Controller>(
     mut peripheral: Peripheral<'_, C>,
-    server: &Server<'_, '_, C>,
 ) -> Result<(), BleHostError<C::Error>> {
     let mut adv_data = [0; 31];
     AdStructure::encode_slice(
@@ -198,12 +212,13 @@ async fn advertise_task<C: Controller>(
                     scan_data: &[],
                 },
             )
-            .await {
-                Ok(x) => x,
-                Err(e) => {
-                    error!("ADVERTISING ERROR: {:?}", e);
-                    return Err(e);
-                }
+            .await
+        {
+            Ok(x) => x,
+            Err(e) => {
+                error!("ADVERTISING ERROR: {:?}", e);
+                return Err(e);
+            }
         };
         info!("[adv] advertising2");
         let conn = advertiser.accept().await?;

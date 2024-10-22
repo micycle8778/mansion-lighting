@@ -1,12 +1,12 @@
-use embassy_rp::gpio::Output;
 use embassy_rp::gpio::Level;
+use embassy_rp::gpio::Output;
 
-use embassy_rp::pio::StateMachine;
-use embassy_rp::pio::Instance;
-use embassy_rp::pio::Common;
-use embassy_rp::pio::PioPin;
 use embassy_rp::pio;
+use embassy_rp::pio::Common;
+use embassy_rp::pio::Instance;
+use embassy_rp::pio::PioPin;
 use embassy_rp::pio::ShiftDirection;
+use embassy_rp::pio::StateMachine;
 
 // use embassy_rp::pio::{self, Pio, PioPin, Instance, StateMachineTx};
 
@@ -18,14 +18,14 @@ use crate::Color;
 pub const NUM_LEDS: usize = 90;
 
 pub struct LedDriver<'peripherals, PIO: Instance, const SM: usize> {
-    sm: StateMachine<'peripherals, PIO, SM>
+    sm: StateMachine<'peripherals, PIO, SM>,
 }
 
 impl<'peripheral, PIO: Instance, const SM: usize> LedDriver<'peripheral, PIO, SM> {
     pub fn new(
         common: &mut Common<'peripheral, PIO>,
         mut sm: StateMachine<'peripheral, PIO, SM>,
-        pin: impl PioPin
+        pin: impl PioPin,
     ) -> Self {
         let prg = pio_proc::pio_asm!(
             ".side_set 1",
@@ -47,7 +47,6 @@ impl<'peripheral, PIO: Instance, const SM: usize> LedDriver<'peripheral, PIO, SM
         let mut raw_pin = pin.into_ref();
         Output::new(raw_pin.reborrow(), Level::Low); // set the pin low
         let out_pin = common.make_pio_pin(raw_pin);
-
 
         let program = common.load_program(&prg.program);
         cfg.use_program(&program, &[&out_pin]);

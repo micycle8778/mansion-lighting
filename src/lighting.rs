@@ -10,8 +10,7 @@ use crate::led::NUM_LEDS;
 use crate::Color;
 
 #[derive(Debug)]
-pub enum Animation {
-}
+pub enum Animation {}
 
 #[derive(Debug)]
 pub enum Message {
@@ -27,7 +26,7 @@ pub enum Message {
 
 pub async fn run<M: RawMutex, PIO: Instance, const N: usize, const SM: usize>(
     mut led_driver: LedDriver<'_, PIO, SM>,
-    recv: Receiver<'_, M, Message, N>
+    recv: Receiver<'_, M, Message, N>,
 ) -> ! {
     let mut brightness = 1.0;
     let mut base_color = Color::BLACK;
