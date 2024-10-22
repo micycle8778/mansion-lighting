@@ -56,7 +56,7 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => PIOInterruptHandler<PIO0>;
 });
 
-static mut CORE1_STACK: Stack<4096> = Stack::new();
+static CORE1_STACK: ConstStaticCell<Stack<4096>> = ConstStaticCell::new(Stack::new());
 static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[embassy_executor::task]
@@ -122,8 +122,7 @@ async fn main(spawner: Spawner) {
     };
 
     let recv = lighting_channel.receiver();
-    // TODO: this will be a compiler error in 2024 rust
-    embassy_rp::multicore::spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
+    embassy_rp::multicore::spawn_core1(p.CORE1, CORE1_STACK.take(), move || {
         let executor1 = EXECUTOR1.init(Executor::new());
         executor1.run(|spawner| spawner.spawn(lighting_task(leds, recv)).unwrap());
     });
