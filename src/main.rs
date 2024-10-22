@@ -4,8 +4,12 @@
 
 use core::fmt::Write;
 
+use embassy_executor::Executor;
+use embassy_rp::multicore::Stack;
+
 use emb_test::lighting::Message;
 use embassy_rp::pio::Instance;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Channel;
@@ -52,6 +56,9 @@ bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => PIOInterruptHandler<PIO0>;
 });
 
+static mut CORE1_STACK: Stack<4096> = Stack::new();
+static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
+
 #[embassy_executor::task]
 async fn logger_task(driver: Driver<'static, USB>) {
     embassy_usb_logger::run!(1024, log::LevelFilter::Trace, driver);
@@ -65,7 +72,7 @@ async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'stat
 #[embassy_executor::task]
 async fn lighting_task(
     led_driver: LedDriver<'static, PIO0, 0>, 
-    recv: Receiver<'static, NoopRawMutex, Message, 1>
+    recv: Receiver<'static, CriticalSectionRawMutex, Message, 1>
 ) -> ! {
     lighting::run(led_driver, recv).await;
 }
@@ -110,11 +117,16 @@ async fn main(spawner: Spawner) {
     };
 
     let lighting_channel = {
-        static LIGHTING_CHANNEL: ConstStaticCell<Channel<NoopRawMutex, Message, 1>> = ConstStaticCell::new(Channel::new());
+        static LIGHTING_CHANNEL: ConstStaticCell<Channel<CriticalSectionRawMutex, Message, 1>> = ConstStaticCell::new(Channel::new());
         LIGHTING_CHANNEL.take()
     };
 
-    spawner.must_spawn(lighting_task(leds, lighting_channel.receiver()));
+    let recv = lighting_channel.receiver();
+    // TODO: this will be a compiler error in 2024 rust
+    embassy_rp::multicore::spawn_core1(p.CORE1, unsafe { &mut CORE1_STACK }, move || {
+        let executor1 = EXECUTOR1.init(Executor::new());
+        executor1.run(|spawner| spawner.spawn(lighting_task(leds, recv)).unwrap());
+    });
 
     // initialize the bluetooth chip
     // first, lets get the firmware in here. we need this firmware to use

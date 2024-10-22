@@ -1,7 +1,8 @@
 #[derive(Clone, Copy, Debug)]
 pub struct Color {
-    // ???, blue, red, green
-    inner: u32
+    red: u8,
+    green: u8,
+    blue: u8
 }
 
 impl Color {
@@ -19,38 +20,44 @@ impl Color {
 
     pub const fn new(red: u8, green: u8, blue: u8) -> Color {
         Self {
-            inner: ((blue as u32) << 16) | ((red as u32) << 8) | (green as u32)
+            red, green, blue
         }
     }
 
     pub const fn with_red(self, red: u8) -> Color {
         Self {
-            inner: (self.inner & 0b11111111_00000000_11111111) | ((red as u32) << 8)
+            red,
+            green: self.green,
+            blue: self.blue
         }
     }
 
     pub const fn with_green(self, green: u8) -> Color {
         Self {
-            inner: (self.inner & 0b11111111_11111111_00000000) | (green as u32)
+            red: self.red,
+            green,
+            blue: self.blue
         }
     }
 
     pub const fn with_blue(self, blue: u8) -> Color {
         Self {
-            inner: (self.inner & 0b00000000_11111111_11111111) | ((blue as u32) << 16)
+            red: self.red,
+            green: self.green,
+            blue
         }
     }
 
     pub const fn red(self) -> u8 {
-        ((self.inner & 0b00000000_11111111_00000000) >> 8) as u8
+        self.red
     }
 
     pub const fn green(self) -> u8 {
-        self.inner as u8
+        self.green
     }
 
     pub const fn blue(self) -> u8 {
-        ((self.inner & 0b11111111_00000000_00000000) >> 16) as u8
+        self.blue
     }
 
     pub fn dim(self, multiplier: f32) -> Color {
@@ -61,8 +68,11 @@ impl Color {
         Self::new(red, green, blue)
     }
 
+    // green, red, blue, ???
     pub const fn as_u32(self) -> u32 {
-        self.inner
+        ((self.green as u32) << 24)
+        | ((self.red as u32) << 16)
+        | ((self.blue as u32) << 8)
     }
 }
 

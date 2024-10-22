@@ -28,15 +28,7 @@ type Resources<C> = HostResources<C, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX, L2CAP_
 // GATT Server definition
 #[gatt_server(attribute_data_size = 32)]
 struct Server {
-    battery_service: BatteryService,
     mansion_lighting: MansionLighting
-}
-
-// Battery service
-#[gatt_service(uuid = "180f")]
-struct BatteryService {
-    #[characteristic(uuid = "2a19", read, notify)]
-    level: u8,
 }
 
 type C = [u8; 3];
@@ -169,13 +161,9 @@ async fn advertise_task<C: Controller>(
         info!("[adv] advertising2");
         let conn = advertiser.accept().await?;
         info!("[adv] connection established");
-        // Keep connection alive
-        let mut tick: u8 = 0;
+        // wait until connection dies
         while conn.is_connected() {
-            Timer::after(Duration::from_secs(2)).await;
-            tick = tick.wrapping_add(1);
-            info!("[adv] notifying connection of tick {}", tick);
-            let _ = server.notify(server.battery_service.level, &conn, &[tick]).await;
+            yield_now().await;
         }
     }
 }

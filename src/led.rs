@@ -58,7 +58,7 @@ impl<'peripheral, PIO: Instance, const SM: usize> LedDriver<'peripheral, PIO, SM
 
         cfg.shift_out.auto_fill = true;
         cfg.shift_out.threshold = 24;
-        cfg.shift_out.direction = ShiftDirection::Right;
+        cfg.shift_out.direction = ShiftDirection::Left;
 
         sm.set_pin_dirs(pio::Direction::Out, &[&out_pin]);
         sm.set_config(&cfg);
