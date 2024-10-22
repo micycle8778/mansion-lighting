@@ -4,15 +4,19 @@
 
 use core::fmt::Write;
 
+use emb_test::lighting::Message;
+use embassy_rp::pio::Instance;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::channel::Channel;
+use embassy_sync::channel::Receiver;
 use log::info;
 
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::Driver;
-use embassy_time::Duration;
 use embassy_time::Timer;
-use embassy_futures::join::join3;
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use bt_hci::controller::ExternalController;
+use static_cell::ConstStaticCell;
 use static_cell::StaticCell;
 
 use cyw43_pio::PioSpi;
@@ -37,7 +41,8 @@ use defmt_rtt as _;
 use ssd1306::{prelude::*, Ssd1306};
 use ssd1306::I2CDisplayInterface;
 
-use emb_test::led::{Color, LedDriver};
+use emb_test::lighting;
+use emb_test::led::LedDriver;
 use emb_test::blue;
 
 // Bind interrupts to their handlers.
@@ -57,6 +62,14 @@ async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'stat
     runner.run().await
 }
 
+#[embassy_executor::task]
+async fn lighting_task(
+    led_driver: LedDriver<'static, PIO0, 0>, 
+    recv: Receiver<'static, NoopRawMutex, Message, 1>
+) -> ! {
+    lighting::run(led_driver, recv).await;
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     // Initialize peripherals and USB driver.
@@ -64,7 +77,7 @@ async fn main(spawner: Spawner) {
 
     // Spawn USB logger
     let usb_driver = Driver::new(p.USB, Irqs);
-    spawner.spawn(logger_task(usb_driver)).unwrap();
+    spawner.must_spawn(logger_task(usb_driver));
 
     // sleep 1 second to give us time to start the serial connection
     Timer::after_secs(1).await;
@@ -92,9 +105,16 @@ async fn main(spawner: Spawner) {
     let mut pio = Pio::new(p.PIO0, Irqs); 
 
     // initialize the w2812 LEDs
-    let mut leds = {
+    let leds = {
         LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28)
     };
+
+    let lighting_channel = {
+        static LIGHTING_CHANNEL: ConstStaticCell<Channel<NoopRawMutex, Message, 1>> = ConstStaticCell::new(Channel::new());
+        LIGHTING_CHANNEL.take()
+    };
+
+    spawner.must_spawn(lighting_task(leds, lighting_channel.receiver()));
 
     // initialize the bluetooth chip
     // first, lets get the firmware in here. we need this firmware to use
@@ -112,11 +132,11 @@ async fn main(spawner: Spawner) {
     static STATE: StaticCell<cyw43::State> = StaticCell::new();
     let state = STATE.init(cyw43::State::new());
     let (_net_device, bt_device, mut control, runner) = cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
-    spawner.spawn(cyw43_task(runner)).unwrap();
+    spawner.must_spawn(cyw43_task(runner));
     control.init(clm).await;
 
     let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
 
-    blue::run(controller).await;
+    blue::run(controller, lighting_channel.sender()).await;
     panic!("end of program.");
 }

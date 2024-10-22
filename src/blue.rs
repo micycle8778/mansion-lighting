@@ -1,4 +1,6 @@
 use embassy_futures::yield_now;
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::channel::Sender;
 use log::error;
 use log::info;
 
@@ -6,6 +8,9 @@ use embassy_futures::join::join3;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
 use trouble_host::prelude::*;
+
+use crate::Color;
+use crate::lighting::Message;
 
 /// Size of L2CAP packets (ATT MTU is this - 4)
 const L2CAP_MTU: usize = 251;
@@ -24,7 +29,7 @@ type Resources<C> = HostResources<C, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX, L2CAP_
 #[gatt_server(attribute_data_size = 32)]
 struct Server {
     battery_service: BatteryService,
-    my_service: MyService
+    mansion_lighting: MansionLighting
 }
 
 // Battery service
@@ -34,16 +39,21 @@ struct BatteryService {
     level: u8,
 }
 
+type C = [u8; 3];
 #[gatt_service(uuid = "6D69636861656C73206D616E73696F6E")]
-struct MyService {
-    #[characteristic(uuid = "6D69636861656C73206D616E73696F6E", read, write)]
-    byte: u8,
+struct MansionLighting {
+    #[characteristic(uuid = "42617365436F6C6F7200000000000000", write)]
+    base_color: C,
+    #[characteristic(uuid = "4272696768746E6573730A0000000000", write)]
+    brightness: u8,
+    #[characteristic(uuid = "536B6970000000000000000000000000", write)]
+    skip: u8,
 }
 
-pub async fn run<C>(controller: C)
-where
-    C: Controller,
-{
+pub async fn run<C: Controller, M: RawMutex, const N: usize>(
+    controller: C, 
+    sender: Sender<'_, M, Message, N>
+) {
     let address = Address::random([0xff, 0x9f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("Our address = {:?}", address);
 
@@ -70,7 +80,7 @@ where
     info!("Starting advertising and GATT service");
     let _ = join3(
         ble_task(runner),
-        gatt_task(&server),
+        gatt_task(&server, sender),
         advertise_task(peripheral, &server),
     )
     .await;
@@ -80,34 +90,44 @@ async fn ble_task<C: Controller>(mut runner: Runner<'_, C>) {
     if let Err(e) = runner.run().await {
         error!("ble_task ERROR: {e:?}");
     }
+
+    // we call sys_reset here because the bluetooth
+    // stack can't handle reconnections for whatever reason.
+    // TODO: use a better way to reset the bluetooth stack
+    cortex_m::peripheral::SCB::sys_reset();
 }
 
-async fn gatt_task<C: Controller>(server: &Server<'_, '_, C>) {
+async fn gatt_task<C: Controller, M: RawMutex, const N: usize>(
+    server: &Server<'_, '_, C>,
+    sender: Sender<'_, M, Message, N>
+) {
     loop {
         match server.next().await {
             Ok(GattEvent::Write { handle, connection: _ }) => {
                 info!("[gatt] pre write event on {:?}", handle);
 
-                let e = server.get(handle, |value| {
-                    if handle == server.my_service.byte {
-                        info!("[gatt] write on michaels mansion, value {value:?}");
-                    } else {
-                        info!("[gatt] Write event on {:?}", handle);
-                    }
-                });
-
-                if let Err(e) = e {
-                    error!("[gatt] error on write event {e:?}");
+                if handle == server.mansion_lighting.base_color {
+                    info!("setting base color");
+                    server.get(server.mansion_lighting.base_color, |value| {
+                        let color = Color::new(value[0], value[1], value[2]);
+                        sender.send(Message::SetColor(color))
+                    }).unwrap().await;
+                } else if handle == server.mansion_lighting.brightness {
+                    info!("setting brightness");
+                    server.get(server.mansion_lighting.brightness, |value| {
+                        sender.send(Message::SetBrightness(value[0]))
+                    }).unwrap().await;
+                } else if handle == server.mansion_lighting.skip {
+                    info!("setting skip");
+                    server.get(server.mansion_lighting.skip, |value| {
+                        sender.send(Message::SetSkip(value[0]))
+                    }).unwrap().await;
+                } else {
+                    info!("[gatt] Write event on {:?}", handle);
                 }
             }
             Ok(GattEvent::Read { handle, connection: _ }) => {
-                if handle == server.my_service.byte {
-                    server.get(handle, |value| {
-                        info!("[gatt] read on michaels mansion; value: {value:?}");
-                    }).unwrap();
-                } else {
-                    info!("[gatt] Read event on {:?}", handle);
-                }
+                info!("[gatt] Read event on {:?}", handle);
             }
             Err(e) => {
                 error!("[gatt] Error processing GATT events: {:?}", e);
