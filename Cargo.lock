@@ -234,6 +234,7 @@ dependencies = [
  "embedded-io-async",
  "futures",
  "heapless",
+ "log",
  "num_enum",
 ]
 

@@ -4,7 +4,7 @@ use embassy_sync::channel::Sender;
 use log::error;
 use log::info;
 
-use embassy_futures::join::join3;
+use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_time::{Duration, Timer};
 use trouble_host::prelude::*;
@@ -28,18 +28,27 @@ type Resources<C> = HostResources<C, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX, L2CAP_
 // GATT Server definition
 #[gatt_server(attribute_data_size = 32)]
 struct Server {
-    mansion_lighting: MansionLighting
 }
 
-type C = [u8; 3];
-#[gatt_service(uuid = "6D69636861656C73206D616E73696F6E")]
-struct MansionLighting {
-    #[characteristic(uuid = "42617365436F6C6F7200000000000000", write)]
-    base_color: C,
-    #[characteristic(uuid = "4272696768746E6573730A0000000000", write)]
-    brightness: u8,
-    #[characteristic(uuid = "536B6970000000000000000000000000", write)]
-    skip: u8,
+struct Handles {
+    base_color: Characteristic,
+    brightness: Characteristic,
+    skip: Characteristic
+}
+
+const fn gen_uuid(s: &str) -> Uuid {
+    let bytes = s.as_bytes();
+    assert!(bytes.len() <= 16);
+    let mut result = [0u8; 16];
+
+    let mut idx = 0;
+    while idx != s.len() {
+        result[result.len() - 1 - idx] = bytes[idx];
+
+        idx += 1;
+    }
+
+    Uuid::new_long(result)
 }
 
 pub async fn run<C: Controller, M: RawMutex, const N: usize>(
@@ -67,12 +76,54 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
     // Generic attribute service (mandatory)
     table.add_service(Service::new(0x1801));
 
+    // mansion lighting
+    // we're avoiding the host_macro stuff because those use static_cell
+    // which panic if they're used more than once
+    let mut base_color = [0u8; 3];
+    let mut brightness = [0u8];
+    let mut skip = [0u8];
+
+    let handles = {
+        const SERVICE_UUID: Uuid = gen_uuid("michaels mansion");
+        const BASE_COLOR_UUID: Uuid = gen_uuid("base color");
+        const BRIGHTNESS_UUID: Uuid = gen_uuid("brightness");
+        const SKIP_UUID: Uuid = gen_uuid("skip");
+
+        let mut service = table.add_service(Service::new(SERVICE_UUID));
+
+        let base_color = service.add_characteristic(
+            BASE_COLOR_UUID,
+            &[CharacteristicProp::Write], 
+            &mut base_color 
+        ).build();
+
+        let brightness = service.add_characteristic(
+            BRIGHTNESS_UUID,
+            &[CharacteristicProp::Write], 
+            &mut brightness
+        ).build();
+
+        let skip = service.add_characteristic(
+            SKIP_UUID,
+            &[CharacteristicProp::Write], 
+            &mut skip 
+        ).build();
+
+        service.build();
+
+        Handles {
+            base_color,
+            brightness,
+            skip
+        }
+    };
+
     let server = Server::new(stack, &mut table);
 
     info!("Starting advertising and GATT service");
-    let _ = join3(
+    let _ = select3(
         ble_task(runner),
-        gatt_task(&server, sender),
+        gatt_task(&server, sender, handles),
         advertise_task(peripheral, &server),
     )
     .await;
@@ -82,36 +133,32 @@ async fn ble_task<C: Controller>(mut runner: Runner<'_, C>) {
     if let Err(e) = runner.run().await {
         error!("ble_task ERROR: {e:?}");
     }
-
-    // we call sys_reset here because the bluetooth
-    // stack can't handle reconnections for whatever reason.
-    // TODO: use a better way to reset the bluetooth stack
-    cortex_m::peripheral::SCB::sys_reset();
 }
 
 async fn gatt_task<C: Controller, M: RawMutex, const N: usize>(
     server: &Server<'_, '_, C>,
-    sender: Sender<'_, M, Message, N>
+    sender: Sender<'_, M, Message, N>,
+    handles: Handles
 ) {
     loop {
         match server.next().await {
             Ok(GattEvent::Write { handle, connection: _ }) => {
                 info!("[gatt] pre write event on {:?}", handle);
 
-                if handle == server.mansion_lighting.base_color {
+                if handle == handles.base_color {
                     info!("setting base color");
-                    server.get(server.mansion_lighting.base_color, |value| {
+                    server.get(handles.base_color, |value| {
                         let color = Color::new(value[0], value[1], value[2]);
                         sender.send(Message::SetColor(color))
                     }).unwrap().await;
-                } else if handle == server.mansion_lighting.brightness {
+                } else if handle == handles.brightness {
                     info!("setting brightness");
-                    server.get(server.mansion_lighting.brightness, |value| {
+                    server.get(handles.brightness, |value| {
                         sender.send(Message::SetBrightness(value[0]))
                     }).unwrap().await;
-                } else if handle == server.mansion_lighting.skip {
+                } else if handle == handles.skip {
                     info!("setting skip");
-                    server.get(server.mansion_lighting.skip, |value| {
+                    server.get(handles.skip, |value| {
                         sender.send(Message::SetSkip(value[0]))
                     }).unwrap().await;
                 } else {

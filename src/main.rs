@@ -3,15 +3,21 @@
 #![deny(unused_must_use)]
 
 use core::fmt::Write;
+use core::mem::MaybeUninit;
 
 use embassy_executor::Executor;
+use embassy_futures::join::join;
+use embassy_futures::select::select;
 use embassy_rp::multicore::Stack;
 
 use emb_test::lighting::Message;
 use embassy_rp::pio::Instance;
+use embassy_rp::Peripheral;
+use embassy_rp::PeripheralRef;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::NoopMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::channel::Receiver;
 use log::info;
@@ -35,6 +41,7 @@ use embassy_rp::bind_interrupts;
 use embassy_rp::peripherals::DMA_CH0;
 use embassy_rp::peripherals::I2C0;
 use embassy_rp::peripherals::PIO0;
+use embassy_rp::peripherals::PIO1;
 use embassy_rp::pio::InterruptHandler as PIOInterruptHandler;
 use embassy_rp::i2c::InterruptHandler as I2CInterruptHandler;
 use embassy_rp::usb::InterruptHandler as USBInterruptHandler;
@@ -54,6 +61,7 @@ bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => USBInterruptHandler<USB>;
     I2C0_IRQ => I2CInterruptHandler<I2C0>;
     PIO0_IRQ_0 => PIOInterruptHandler<PIO0>;
+    PIO1_IRQ_0 => PIOInterruptHandler<PIO1>;
 });
 
 static CORE1_STACK: ConstStaticCell<Stack<4096>> = ConstStaticCell::new(Stack::new());
@@ -61,17 +69,12 @@ static EXECUTOR1: StaticCell<Executor> = StaticCell::new();
 
 #[embassy_executor::task]
 async fn logger_task(driver: Driver<'static, USB>) {
-    embassy_usb_logger::run!(1024, log::LevelFilter::Trace, driver);
-}
-
-#[embassy_executor::task]
-async fn cyw43_task(runner: cyw43::Runner<'static, Output<'static>, PioSpi<'static, PIO0, 1, DMA_CH0>>) -> ! {
-    runner.run().await
+    embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
 }
 
 #[embassy_executor::task]
 async fn lighting_task(
-    led_driver: LedDriver<'static, PIO0, 0>, 
+    led_driver: LedDriver<'static, PIO1, 0>, 
     recv: Receiver<'static, CriticalSectionRawMutex, Message, 1>
 ) -> ! {
     lighting::run(led_driver, recv).await;
@@ -108,8 +111,7 @@ async fn main(spawner: Spawner) {
     display.clear().unwrap();
     let _ = write!(display, "Hello, world!");
 
-    // setup PIO
-    let mut pio = Pio::new(p.PIO0, Irqs); 
+    let mut pio = Pio::new(p.PIO1, Irqs);
 
     // initialize the w2812 LEDs
     let leds = {
@@ -134,20 +136,47 @@ async fn main(spawner: Spawner) {
     let clm = include_bytes!("../firmware/43439A0_clm.bin");
     let btfw = include_bytes!("../firmware/43439A0_btfw.bin");
 
-    // setup pins for talking to the SPI bus of the bluetooth chip
-    let pwr = Output::new(p.PIN_23, Level::Low);
-    let cs = Output::new(p.PIN_25, Level::High);
-    let spi = PioSpi::new(&mut pio.common, pio.sm1, pio.irq0, cs, p.PIN_24, p.PIN_29, p.DMA_CH0);
+    // We're gonna loop here because the bluetooth driver cannot handle reconnection.
+    // The bluetooth driver crashes after the client disconnects, and I can't be bothered
+    // trying to fix it.
 
-    // spin up the driver
-    static STATE: StaticCell<cyw43::State> = StaticCell::new();
-    let state = STATE.init(cyw43::State::new());
-    let (_net_device, bt_device, mut control, runner) = cyw43::new_with_bluetooth(state, pwr, spi, fw, btfw).await;
-    spawner.must_spawn(cyw43_task(runner));
-    control.init(clm).await;
+    let mut pwr_pin = PeripheralRef::new(p.PIN_23);
+    let mut cs_pin = PeripheralRef::new(p.PIN_25);
+    let mut dma = PeripheralRef::new(p.DMA_CH0);
+    let mut pio = PeripheralRef::new(p.PIO0);
 
-    let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
+    let cyw43_state = {
+        static STATE: StaticCell<cyw43::State> = StaticCell::new();
+        STATE.init(cyw43::State::new())
+    };
 
-    blue::run(controller, lighting_channel.sender()).await;
-    panic!("end of program.");
+    loop {
+        // SAFETY: i pinky promise i won't use these pins more than once per iteration
+        let dio_pin = unsafe { p.PIN_24.clone_unchecked() };
+        let clk_pin = unsafe { p.PIN_29.clone_unchecked() };
+        let mut pio = Pio::new(pio.reborrow(), Irqs);
+
+        // setup pins for talking to the SPI bus of the bluetooth chip
+        let pwr = Output::new(pwr_pin.reborrow(), Level::Low);
+        let cs = Output::new(cs_pin.reborrow(), Level::High);
+        let spi = PioSpi::new(
+            &mut pio.common, 
+            pio.sm1, 
+            pio.irq0, 
+            cs, 
+            dio_pin, 
+            clk_pin, 
+            dma.reborrow()
+        );
+
+        // spin up the driver
+        *cyw43_state = cyw43::State::new();
+        let (_net_device, bt_device, mut control, runner) = cyw43::new_with_bluetooth(cyw43_state, pwr, spi, fw, btfw).await;
+        let controller: ExternalController<_, 10> = ExternalController::new(bt_device);
+
+        select(
+            join(control.init(clm), runner.run()), // run the cyw43 driver
+            blue::run(controller, lighting_channel.sender()) // run the ble driver
+        ).await;
+    }
 }
