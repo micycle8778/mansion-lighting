@@ -1,5 +1,5 @@
 [package]
-name = "emb-test"
+name = "mansion-lighting"
 version = "0.1.0"
 edition = "2021"
 
@@ -47,14 +47,14 @@ embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625
 embassy-usb-logger = { git = "https://github.com/embassy-rs/embassy", rev = "8dde7b625eed78271fec8f69ffa370e55c9dda9e" }
 
 [[bin]]
-name = "emb_test"
+name = "mansion_lighting"
 path = "src/main.rs"
 test = false
 doctest = false
 bench = false
 
 [lib]
-name = "emb_test"
+name = "mansion_lighting"
 path = "src/lib.rs"
 test = false
 doctest = false

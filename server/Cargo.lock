@@ -423,41 +423,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
-name = "emb-test"
-version = "0.1.0"
-dependencies = [
- "bt-hci",
- "cortex-m",
- "cortex-m-rt",
- "critical-section",
- "cyw43",
- "cyw43-pio",
- "defmt",
- "defmt-rtt",
- "dht-sensor",
- "dht11",
- "embassy-executor",
- "embassy-futures",
- "embassy-rp",
- "embassy-sync",
- "embassy-time",
- "embassy-usb-logger",
- "embedded-hal 1.0.0",
- "fastrand",
- "fixed",
- "fixed-macro",
- "log",
- "panic-probe",
- "pio",
- "pio-proc",
- "portable-atomic",
- "rand_core",
- "ssd1306",
- "static_cell",
- "trouble-host",
-]
-
-[[package]]
 name = "embassy-embedded-hal"
 version = "0.2.0"
 source = "git+https://github.com/embassy-rs/embassy?rev=8dde7b625eed78271fec8f69ffa370e55c9dda9e#8dde7b625eed78271fec8f69ffa370e55c9dda9e"
@@ -1051,6 +1016,41 @@ name = "log"
 version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
+
+[[package]]
+name = "mansion-lighting"
+version = "0.1.0"
+dependencies = [
+ "bt-hci",
+ "cortex-m",
+ "cortex-m-rt",
+ "critical-section",
+ "cyw43",
+ "cyw43-pio",
+ "defmt",
+ "defmt-rtt",
+ "dht-sensor",
+ "dht11",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-rp",
+ "embassy-sync",
+ "embassy-time",
+ "embassy-usb-logger",
+ "embedded-hal 1.0.0",
+ "fastrand",
+ "fixed",
+ "fixed-macro",
+ "log",
+ "panic-probe",
+ "pio",
+ "pio-proc",
+ "portable-atomic",
+ "rand_core",
+ "ssd1306",
+ "static_cell",
+ "trouble-host",
+]
 
 [[package]]
 name = "maybe-async-cfg"

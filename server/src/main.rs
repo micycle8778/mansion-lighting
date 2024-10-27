@@ -9,13 +9,13 @@ use embassy_futures::join::join;
 use embassy_futures::select::select;
 use embassy_rp::multicore::Stack;
 
-use emb_test::lighting::Message;
 use embassy_rp::Peripheral;
 use embassy_rp::PeripheralRef;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::channel::Receiver;
 use log::info;
+use mansion_lighting::lighting::Message;
 
 use bt_hci::controller::ExternalController;
 use embassy_rp::peripherals::USB;
@@ -46,9 +46,9 @@ use defmt_rtt as _;
 use ssd1306::I2CDisplayInterface;
 use ssd1306::{prelude::*, Ssd1306};
 
-use emb_test::blue;
-use emb_test::led::LedDriver;
-use emb_test::lighting;
+use mansion_lighting::blue;
+use mansion_lighting::led::LedDriver;
+use mansion_lighting::lighting;
 
 // Bind interrupts to their handlers.
 bind_interrupts!(struct Irqs {
