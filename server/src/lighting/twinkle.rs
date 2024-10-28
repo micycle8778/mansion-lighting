@@ -1,32 +1,28 @@
-use half::f16;
-use rand_core::RngCore;
-use crate::Color;
-use crate::lighting::State;
 use crate::lighting::Animation;
-use embassy_rp::clocks::RoscRng;
-use embassy_sync::mutex::MutexGuard;
+use crate::lighting::State;
 use crate::lighting::NUM_LEDS;
+use crate::Color;
+use embassy_rp::clocks::RoscRng;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::mutex::MutexGuard;
+use half::f16;
 use log::info;
+use rand_core::RngCore;
 
 #[derive(Copy, Clone)]
 enum Star {
     Dead,
     Starting { target: f16, at: f16 },
-    Decaying(f16)
+    Decaying(f16),
 }
 
 impl Star {
-    fn dead() -> Self {
-        Star::Dead
-    }
-
     fn starting(target: f32) -> Self {
         info!("Star::starting(target = {target})");
-        Star::Starting { 
+        Star::Starting {
             target: f16::from_f32(target),
-            at: f16::from_bits(0) 
+            at: f16::from_bits(0),
         }
     }
 
@@ -73,7 +69,7 @@ impl Star {
 
 static STARS: Mutex<ThreadModeRawMutex, [Star; NUM_LEDS]> = Mutex::new([Star::Dead; NUM_LEDS]);
 pub struct Twinkle {
-    stars: MutexGuard<'static, ThreadModeRawMutex, [Star; NUM_LEDS]>
+    stars: MutexGuard<'static, ThreadModeRawMutex, [Star; NUM_LEDS]>,
 }
 
 impl Twinkle {
@@ -87,10 +83,8 @@ impl Twinkle {
         for _ in 0..star_count {
             stars[rng.usize(0..len)] = Star::decaying(rng.f32());
         }
-        
-        Self { 
-            stars
-        }
+
+        Self { stars }
     }
 }
 
@@ -99,18 +93,21 @@ impl Animation for Twinkle {
         let mut rng = fastrand::Rng::with_seed(RoscRng.next_u64());
         let mut colors = [Color::BLACK; NUM_LEDS];
 
+        #[allow(clippy::needless_range_loop)]
         for idx in 0..self.stars.len() {
             if self.stars[idx].tick(delta) {
                 loop {
-                    let idx = rng.usize(0..self.stars.len());
-                    if self.stars[idx].is_dead() {
-                        self.stars[idx] = Star::starting(rng.f32().max(0.1));
+                    let dead_idx = rng.usize(0..self.stars.len());
+                    if self.stars[dead_idx].is_dead() {
+                        self.stars[dead_idx] = Star::starting(rng.f32().max(0.1));
                         break;
                     }
                 }
             }
 
-            colors[idx] = state.base_color.dim(self.stars[idx].brightness() * state.brightness);
+            colors[idx] = state
+                .base_color
+                .dim(self.stars[idx].brightness() * state.brightness);
         }
 
         for color in colors {
@@ -118,4 +115,3 @@ impl Animation for Twinkle {
         }
     }
 }
-

@@ -8,8 +8,6 @@ use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use trouble_host::prelude::*;
 
-use crate::lighting;
-use crate::lighting::AnimationEnum;
 use crate::lighting::Message;
 use crate::Color;
 
@@ -126,11 +124,7 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
             .build();
 
         let animation = service
-            .add_characteristic(
-                ANIMATION_UUID,
-                &[CharacteristicProp::Write],
-                &mut animation,
-            )
+            .add_characteristic(ANIMATION_UUID, &[CharacteristicProp::Write], &mut animation)
             .build();
 
         service.build();
@@ -140,7 +134,7 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
             brightness,
             skip,
             speed,
-            animation
+            animation,
         }
     };
 
@@ -200,27 +194,28 @@ async fn gatt_task<C: Controller, M: RawMutex, const N: usize>(
                         .unwrap()
                         .await;
                 } else if handle == handles.speed {
-                    server.get(handles.speed, |value| {
-                        let Ok(bytes) = value.try_into() else { return sender.send(Message::Noop); };
-                        let speed = f32::from_le_bytes(bytes);
-                        if speed.is_finite() {
-                            sender.send(Message::SetAnimationSpeed(speed))
-                        } else {
-                            sender.send(Message::Noop)
-                        }
-                    })
-                    .unwrap()
-                    .await;
+                    server
+                        .get(handles.speed, |value| {
+                            let Ok(bytes) = value.try_into() else {
+                                return sender.send(Message::Noop);
+                            };
+                            let speed = f32::from_le_bytes(bytes);
+                            if speed.is_finite() {
+                                sender.send(Message::SetAnimationSpeed(speed))
+                            } else {
+                                sender.send(Message::Noop)
+                            }
+                        })
+                        .unwrap()
+                        .await;
                 } else if handle == handles.animation {
-                    server.get(handles.animation, |value| {
-                        sender.send(Message::UseAnimation(value.try_into().unwrap()))
-                    })
-                    .unwrap()
-                    .await;
-                }
-
-                
-                else {
+                    server
+                        .get(handles.animation, |value| {
+                            sender.send(Message::UseAnimation(value.try_into().unwrap()))
+                        })
+                        .unwrap()
+                        .await;
+                } else {
                     info!("[gatt] Write event on {:?}", handle);
                 }
             }

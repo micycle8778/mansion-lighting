@@ -1,13 +1,12 @@
 //! Lighting state and task
 mod twinkle;
 
-use embassy_time::Timer;
-use twinkle::Twinkle;
-use embassy_time::Instant;
-use enum_dispatch::enum_dispatch;
 use embassy_rp::peripherals::PIO1;
+use embassy_time::Instant;
+use embassy_time::Timer;
+use enum_dispatch::enum_dispatch;
 use log::info;
-use log::error;
+use twinkle::Twinkle;
 
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Receiver};
 
@@ -50,10 +49,8 @@ impl AnimationEnum {
     pub fn from_bytes(bytes: [u8; 16]) -> Option<Self> {
         info!("AnimationEnum::from_bytes({bytes:?})");
         match bytes[0] {
-            1 => {
-                Some(Twinkle::new(bytes[1]).into())
-            },
-            _ => None
+            1 => Some(Twinkle::new(bytes[1]).into()),
+            _ => None,
         }
     }
 }
@@ -104,7 +101,7 @@ pub async fn run<M: RawMutex, const N: usize>(
                 }
                 Message::SetAnimationSpeed(speed) => {
                     animation_speed = speed;
-                },
+                }
             }
         }
 
