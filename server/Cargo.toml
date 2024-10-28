@@ -31,9 +31,12 @@ cyw43-pio = "0.2.0"
 embassy-executor = { version = "0.6.0", features = ["arch-cortex-m", "executor-thread", "executor-interrupt", "integrated-timers", "task-arena-size-32768"] }
 embassy-futures = "0.1.1"
 embassy-rp = { version = "0.2.0", features = ["time-driver", "critical-section-impl", "rp2040"] }
-embassy-time = "0.3.2"
+embassy-time = { version = "0.3.2", features = [] }
 embassy-sync = "0.6.0"
 embassy-usb-logger = "0.2.0"
+enum_dispatch = "0.3.13"
+noise-functions = { version = "0.2.1", default-features = false, features = ["libm"] }
+half = { version = "2.4.1", default-features = false }
 
 [patch.crates-io]
 trouble-host = { git = "https://github.com/micycle8778/trouble", rev = "865d4ef5562510a593f868aea59a5b0d572589b0" }

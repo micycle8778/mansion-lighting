@@ -8,6 +8,8 @@ use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use trouble_host::prelude::*;
 
+use crate::lighting;
+use crate::lighting::AnimationEnum;
 use crate::lighting::Message;
 use crate::Color;
 
@@ -32,6 +34,8 @@ struct Handles {
     base_color: Characteristic,
     brightness: Characteristic,
     skip: Characteristic,
+    speed: Characteristic,
+    animation: Characteristic,
 }
 
 const fn gen_uuid(s: &str) -> Uuid {
@@ -80,12 +84,16 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
     let mut base_color = [0u8; 3];
     let mut brightness = [0u8];
     let mut skip = [0u8];
+    let mut animation_speed = [0u8; 4];
+    let mut animation = [0u8; 16];
 
     let handles = {
         const SERVICE_UUID: Uuid = gen_uuid("michaels mansion");
         const BASE_COLOR_UUID: Uuid = gen_uuid("base color");
         const BRIGHTNESS_UUID: Uuid = gen_uuid("brightness");
         const SKIP_UUID: Uuid = gen_uuid("skip");
+        const ANIMATION_UUID: Uuid = gen_uuid("animation");
+        const SPEED_UUID: Uuid = gen_uuid("speed");
 
         let mut service = table.add_service(Service::new(SERVICE_UUID));
 
@@ -109,12 +117,30 @@ pub async fn run<C: Controller, M: RawMutex, const N: usize>(
             .add_characteristic(SKIP_UUID, &[CharacteristicProp::Write], &mut skip)
             .build();
 
+        let speed = service
+            .add_characteristic(
+                SPEED_UUID,
+                &[CharacteristicProp::Write],
+                &mut animation_speed,
+            )
+            .build();
+
+        let animation = service
+            .add_characteristic(
+                ANIMATION_UUID,
+                &[CharacteristicProp::Write],
+                &mut animation,
+            )
+            .build();
+
         service.build();
 
         Handles {
             base_color,
             brightness,
             skip,
+            speed,
+            animation
         }
     };
 
@@ -173,7 +199,28 @@ async fn gatt_task<C: Controller, M: RawMutex, const N: usize>(
                         })
                         .unwrap()
                         .await;
-                } else {
+                } else if handle == handles.speed {
+                    server.get(handles.speed, |value| {
+                        let Ok(bytes) = value.try_into() else { return sender.send(Message::Noop); };
+                        let speed = f32::from_le_bytes(bytes);
+                        if speed.is_finite() {
+                            sender.send(Message::SetAnimationSpeed(speed))
+                        } else {
+                            sender.send(Message::Noop)
+                        }
+                    })
+                    .unwrap()
+                    .await;
+                } else if handle == handles.animation {
+                    server.get(handles.animation, |value| {
+                        sender.send(Message::UseAnimation(value.try_into().unwrap()))
+                    })
+                    .unwrap()
+                    .await;
+                }
+
+                
+                else {
                     info!("[gatt] Write event on {:?}", handle);
                 }
             }
