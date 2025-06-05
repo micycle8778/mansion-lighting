@@ -1,8 +1,11 @@
 #[derive(Clone, Copy, Debug)]
+#[repr(C)]
+#[repr(align(4))]
 pub struct Color {
-    red: u8,
+    _buf: u8,
     green: u8,
     blue: u8,
+    red: u8,
 }
 
 impl Color {
@@ -19,11 +22,12 @@ impl Color {
     pub const WHITE: Self = Self::new(255, 255, 255);
 
     pub const fn new(red: u8, green: u8, blue: u8) -> Color {
-        Self { red, green, blue }
+        Self { _buf: 0, red, green, blue }
     }
 
     pub const fn with_red(self, red: u8) -> Color {
         Self {
+            _buf: 0,
             red,
             green: self.green,
             blue: self.blue,
@@ -32,6 +36,7 @@ impl Color {
 
     pub const fn with_green(self, green: u8) -> Color {
         Self {
+            _buf: 0,
             red: self.red,
             green,
             blue: self.blue,
@@ -40,6 +45,7 @@ impl Color {
 
     pub const fn with_blue(self, blue: u8) -> Color {
         Self {
+            _buf: 0,
             red: self.red,
             green: self.green,
             blue,
@@ -67,7 +73,11 @@ impl Color {
     }
 
     // green, red, blue, ???
+    // TODO: repr(C) shenanigans?
     pub const fn as_u32(self) -> u32 {
-        ((self.green as u32) << 24) | ((self.red as u32) << 16) | ((self.blue as u32) << 8)
+        // ((self.red as u32) << 24) | ((self.green as u32) << 16) | ((self.blue as u32) << 8)
+        // SAFETY: because of the repr(C) above, the code below is exactly the same as the code
+        // above.
+        unsafe { core::mem::transmute(self) }
     }
 }

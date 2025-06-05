@@ -2,8 +2,9 @@
 #![no_main]
 #![deny(unused_must_use)]
 
-use core::fmt::Write;
 
+use core::fmt::Write;
+use embassy_rp::peripherals::DMA_CH1;
 use embassy_executor::Executor;
 use embassy_futures::join::join;
 use embassy_futures::select::select;
@@ -68,7 +69,7 @@ async fn logger_task(driver: Driver<'static, USB>) {
 
 #[embassy_executor::task]
 async fn lighting_task(
-    led_driver: LedDriver<'static, PIO1, 0>,
+    led_driver: LedDriver<'static, 'static, PIO1, DMA_CH1, 0>,
     recv: Receiver<'static, CriticalSectionRawMutex, Message, 1>,
 ) -> ! {
     lighting::run(led_driver, recv).await;
@@ -80,8 +81,11 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // Spawn USB logger
-    let usb_driver = Driver::new(p.USB, Irqs);
-    spawner.must_spawn(logger_task(usb_driver));
+    #[cfg(debug_assertions)]
+    {
+        let usb_driver = Driver::new(p.USB, Irqs);
+        spawner.must_spawn(logger_task(usb_driver));
+    }
 
     // sleep 1 second to give us time to start the serial connection
     Timer::after_secs(1).await;
@@ -99,7 +103,7 @@ async fn main(spawner: Spawner) {
     let mut pio = Pio::new(p.PIO1, Irqs);
 
     // initialize the w2812 LEDs
-    let leds = { LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28) };
+    let leds = { LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28, PeripheralRef::new(p.DMA_CH1)) };
 
     let lighting_channel = {
         static LIGHTING_CHANNEL: ConstStaticCell<Channel<CriticalSectionRawMutex, Message, 1>> =

@@ -1,3 +1,5 @@
+use embassy_rp::PeripheralRef;
+use embassy_rp::dma::Channel;
 use embassy_rp::gpio::Level;
 use embassy_rp::gpio::Output;
 
@@ -15,27 +17,29 @@ use fixed_macro::types::U56F8;
 
 use crate::Color;
 
-pub const NUM_LEDS: usize = 90;
+pub const NUM_LEDS: usize = 100;
 
-pub struct LedDriver<'peripherals, PIO: Instance, const SM: usize> {
+pub struct LedDriver<'peripherals, 'dma_channel, PIO: Instance, C: Channel, const SM: usize> {
     sm: StateMachine<'peripherals, PIO, SM>,
+    channel: PeripheralRef<'dma_channel, C>
 }
 
-impl<'peripheral, PIO: Instance, const SM: usize> LedDriver<'peripheral, PIO, SM> {
+impl<'peripheral, 'dma_channel, PIO: Instance, C: Channel, const SM: usize> LedDriver<'peripheral, 'dma_channel, PIO, C, SM> {
     pub fn new(
         common: &mut Common<'peripheral, PIO>,
         mut sm: StateMachine<'peripheral, PIO, SM>,
         pin: impl PioPin,
+        channel: PeripheralRef<'dma_channel, C>
     ) -> Self {
         let prg = pio_proc::pio_asm!(
             ".side_set 1",
             ".wrap_target",
             "bitloop:",
-            "out x, 1 side 0 [3]", // set low 4 cycles (0.500us)
-            "jmp !x, do_zero side 1 [1]", // set high 2 cycle (0.250us)
-            "jmp bitloop side 1 [4]", // set high 5 cycles (0.625us)
+            "out x, 1 side 0 [5]", // set low 5 cycles (0.625us)
+            "jmp !x, do_zero side 1 [2]", // set high 2 cycle (0.250us)
+            "jmp bitloop side 1 [3]", // set high 5 cycles (0.625us)
             "do_zero:",
-            "nop side 0 [2]" // set low 3 cycles (0.375us)
+            "nop side 0 [1]" // set low 3 cycles (0.375us)
                              // "out x, 1", // wait for data and read a bit into x (pin 1 should be set low)
                              // "set pins, 1 [1]", // set pin high (0.4us)
                              // "mov pins, x [1]", // set pin to x (0.4us)
@@ -63,10 +67,17 @@ impl<'peripheral, PIO: Instance, const SM: usize> LedDriver<'peripheral, PIO, SM
         sm.set_config(&cfg);
         sm.set_enable(true);
 
-        Self { sm }
+        Self { sm, channel }
     }
 
     pub async fn send_color(&mut self, color: Color) {
         self.sm.tx().wait_push(color.as_u32()).await;
+    }
+
+    pub async fn send_many(&mut self, colors: &[Color]) {
+        self.sm.tx().dma_push(
+            self.channel.reborrow(),
+            unsafe { core::mem::transmute::<&[Color], &[u32]>(colors) }
+        ).await;
     }
 }
