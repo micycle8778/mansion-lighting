@@ -1,6 +1,7 @@
 //! Lighting state and task
 mod twinkle;
 
+use embassy_rp::peripherals::DMA_CH1;
 use embassy_rp::peripherals::PIO1;
 use embassy_time::Instant;
 use embassy_time::Timer;
@@ -14,7 +15,7 @@ use crate::led::LedDriver;
 use crate::led::NUM_LEDS;
 use crate::Color;
 
-type Driver = LedDriver<'static, PIO1, 0>;
+type Driver = LedDriver<'static, 'static, PIO1, DMA_CH1, 0>;
 
 #[enum_dispatch(AnimationEnum)]
 trait Animation {
