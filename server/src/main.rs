@@ -2,7 +2,7 @@
 #![no_main]
 #![deny(unused_must_use)]
 
-use core::fmt::Write;
+// use core::fmt::Write;
 use embassy_executor::Executor;
 use embassy_futures::join::join;
 use embassy_futures::select::select;
@@ -29,7 +29,7 @@ use cyw43_pio::PioSpi;
 use embassy_executor::Spawner;
 use embassy_rp::gpio::Level;
 use embassy_rp::gpio::Output;
-use embassy_rp::i2c::{self, I2c};
+// use embassy_rp::i2c::{self, I2c};
 use embassy_rp::pio::Pio;
 
 use embassy_rp::bind_interrupts;
@@ -43,8 +43,8 @@ use embassy_rp::usb::InterruptHandler as USBInterruptHandler;
 use defmt as _;
 use defmt_rtt as _;
 
-use ssd1306::I2CDisplayInterface;
-use ssd1306::{prelude::*, Ssd1306};
+// use ssd1306::I2CDisplayInterface;
+// use ssd1306::{prelude::*, Ssd1306};
 
 use mansion_lighting::blue;
 use mansion_lighting::led::LedDriver;
@@ -75,7 +75,7 @@ async fn lighting_task(
 }
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     // Initialize peripherals and USB driver.
     let p = embassy_rp::init(Default::default());
 
@@ -83,7 +83,7 @@ async fn main(spawner: Spawner) {
     #[cfg(debug_assertions)]
     {
         let usb_driver = Driver::new(p.USB, Irqs);
-        spawner.must_spawn(logger_task(usb_driver));
+        _spawner.must_spawn(logger_task(usb_driver));
     }
 
     // sleep 1 second to give us time to start the serial connection
@@ -91,13 +91,13 @@ async fn main(spawner: Spawner) {
     info!("Hello, world!");
 
     // initialize the OLED (SSD1306)
-    let i2c = I2c::new_async(p.I2C0, p.PIN_1, p.PIN_0, Irqs, i2c::Config::default());
-    let interface = I2CDisplayInterface::new(i2c);
-    let mut display =
-        Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_terminal_mode();
-    display.init().unwrap();
-    display.clear().unwrap();
-    let _ = write!(display, "Hello, world!");
+    // let i2c = I2c::new_async(p.I2C0, p.PIN_1, p.PIN_0, Irqs, i2c::Config::default());
+    // let interface = I2CDisplayInterface::new(i2c);
+    // let mut display =
+    //     Ssd1306::new(interface, DisplaySize128x64, DisplayRotation::Rotate0).into_terminal_mode();
+    // display.init().unwrap();
+    // display.clear().unwrap();
+    // let _ = write!(display, "Hello, world!");
 
     let mut pio = Pio::new(p.PIO1, Irqs);
 
