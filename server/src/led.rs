@@ -1,7 +1,7 @@
-use embassy_rp::PeripheralRef;
 use embassy_rp::dma::Channel;
 use embassy_rp::gpio::Level;
 use embassy_rp::gpio::Output;
+use embassy_rp::PeripheralRef;
 
 use embassy_rp::pio;
 use embassy_rp::pio::Common;
@@ -21,15 +21,17 @@ pub const NUM_LEDS: usize = 100;
 
 pub struct LedDriver<'peripherals, 'dma_channel, PIO: Instance, C: Channel, const SM: usize> {
     sm: StateMachine<'peripherals, PIO, SM>,
-    channel: PeripheralRef<'dma_channel, C>
+    channel: PeripheralRef<'dma_channel, C>,
 }
 
-impl<'peripheral, 'dma_channel, PIO: Instance, C: Channel, const SM: usize> LedDriver<'peripheral, 'dma_channel, PIO, C, SM> {
+impl<'peripheral, 'dma_channel, PIO: Instance, C: Channel, const SM: usize>
+    LedDriver<'peripheral, 'dma_channel, PIO, C, SM>
+{
     pub fn new(
         common: &mut Common<'peripheral, PIO>,
         mut sm: StateMachine<'peripheral, PIO, SM>,
         pin: impl PioPin,
-        channel: PeripheralRef<'dma_channel, C>
+        channel: PeripheralRef<'dma_channel, C>,
     ) -> Self {
         let prg = pio_proc::pio_asm!(
             ".side_set 1",
@@ -75,9 +77,11 @@ impl<'peripheral, 'dma_channel, PIO: Instance, C: Channel, const SM: usize> LedD
     }
 
     pub async fn send_many(&mut self, colors: &[Color]) {
-        self.sm.tx().dma_push(
-            self.channel.reborrow(),
-            unsafe { core::mem::transmute::<&[Color], &[u32]>(colors) }
-        ).await;
+        self.sm
+            .tx()
+            .dma_push(self.channel.reborrow(), unsafe {
+                core::mem::transmute::<&[Color], &[u32]>(colors)
+            })
+            .await;
     }
 }

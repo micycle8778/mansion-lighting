@@ -22,7 +22,12 @@ impl Color {
     pub const WHITE: Self = Self::new(255, 255, 255);
 
     pub const fn new(red: u8, green: u8, blue: u8) -> Color {
-        Self { _buf: 0, red, green, blue }
+        Self {
+            _buf: 0,
+            red,
+            green,
+            blue,
+        }
     }
 
     pub const fn with_red(self, red: u8) -> Color {

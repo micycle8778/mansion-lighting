@@ -2,13 +2,12 @@
 #![no_main]
 #![deny(unused_must_use)]
 
-
 use core::fmt::Write;
-use embassy_rp::peripherals::DMA_CH1;
 use embassy_executor::Executor;
 use embassy_futures::join::join;
 use embassy_futures::select::select;
 use embassy_rp::multicore::Stack;
+use embassy_rp::peripherals::DMA_CH1;
 
 use embassy_rp::Peripheral;
 use embassy_rp::PeripheralRef;
@@ -103,7 +102,14 @@ async fn main(spawner: Spawner) {
     let mut pio = Pio::new(p.PIO1, Irqs);
 
     // initialize the w2812 LEDs
-    let leds = { LedDriver::new(&mut pio.common, pio.sm0, p.PIN_28, PeripheralRef::new(p.DMA_CH1)) };
+    let leds = {
+        LedDriver::new(
+            &mut pio.common,
+            pio.sm0,
+            p.PIN_28,
+            PeripheralRef::new(p.DMA_CH1),
+        )
+    };
 
     let lighting_channel = {
         static LIGHTING_CHANNEL: ConstStaticCell<Channel<CriticalSectionRawMutex, Message, 1>> =
