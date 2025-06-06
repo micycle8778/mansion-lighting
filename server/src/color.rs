@@ -3,8 +3,8 @@
 #[repr(align(4))]
 pub struct Color {
     _buf: u8,
-    green: u8,
     blue: u8,
+    green: u8,
     red: u8,
 }
 
